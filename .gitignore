@@ -1,0 +1,10 @@
+.ipynb_checkpoints
+__pycache__
+
+FSSAM Datasets
+sa1b
+tars
+segment-anything
+
+*.pth
+*.h5
