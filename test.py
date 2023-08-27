@@ -2,19 +2,13 @@ import torch
 from torch.utils.data import DataLoader, random_split
 import matplotlib.pyplot as plt
 import tqdm
-import os
 import numpy as np
 from torchmetrics.classification import BinaryJaccardIndex
 
-from utils import Embedding_Dataset
+from datasets import Embedding_Dataset
+from utils import is_valid_file
 
 jaccard = BinaryJaccardIndex()
-
-def is_valid_file(path):
-    if path.endswith(('.jpg', '.png')):
-        if os.path.exists(f'{path[:-3]}json') and os.path.exists(f'{path[:-3]}pt'):
-            return True
-    return False
 
 def create_dataloaders(folder_paths, transform=None, target_transform=None, collate_fn=None, batch_size=8, only_test=False):
     dataloaders = {}
