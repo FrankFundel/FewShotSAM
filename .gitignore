@@ -1,9 +1,7 @@
 .ipynb_checkpoints
 __pycache__
+wandb
 
-FSSAM Datasets
-sa1b
-tars
 segment-anything
 
 *.pth

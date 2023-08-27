@@ -14,9 +14,14 @@ def split_coco_json(input_file, output_dir):
         for image in tqdm.tqdm(coco_data['images']):
             image_id = image['id']
             if 'file_name' in image:
-                file_name = image['file_name'][:-3]
+                if image['file_name'] is not None:
+                    file_name = image['file_name'][:-3]
             else:
-                file_name = image['id']
+                file_name = str(image['id']).zfill(12) + '.'
+            
+            if file_name is None:
+                continue
+            
             annotations = []
             
             # Find the corresponding annotations for the current image
@@ -39,7 +44,7 @@ if __name__ == "__main__":
     # Check if the root folder path argument is provided
     if len(sys.argv) != 2:
         print("Please provide the root folder path as an argument.")
-        print("Usage: python convert_masks_to_coco.py /path/to/root/folder")
+        print("Usage: python coco_json_split.py /path/to/root/folder")
         sys.exit(1)
 
     # Retrieve the root folder path from the command-line argument
@@ -52,7 +57,7 @@ if __name__ == "__main__":
     
     # Usage example
     input_file = os.path.join(root_folder_path, 'coco.json')
-    output_dir = os.path.join(root_folder_path, 'images')
+    output_dir = os.path.join(root_folder_path, 'dataset/images')
     split_coco_json(input_file, output_dir)
     
     print('Splitting completed successfully.')

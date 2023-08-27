@@ -1,24 +1,30 @@
-import h5py
 import torch
-import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
-from utils import SA1B_Dataset, sample_point
-from segment_anything import sam_model_registry
-from torchvision import transforms
-from torchvision.transforms import Compose, ToPILImage, ToTensor, Normalize
-from segment_anything.utils.transforms import ResizeLongestSide
 from torch.nn.parallel import DataParallel
+from torchvision.datasets import ImageFolder
+from torchvision.transforms import Compose, ToTensor
+from utils import Path_Dataset, PILToNumpy, NumpyToTensor, SAMPreprocess
+
 import tqdm
-import random
 import numpy as np
+import os
+import argparse
 
-# Create a new HDF5 file
-output_file = 'test_ds.h5'
-h5_file = h5py.File(output_file, 'w')
+from segment_anything import sam_model_registry
+from segment_anything.utils.transforms import ResizeLongestSide
 
-# Create a new group in the HDF5 file to store the embedded data
-ds_name = "EgoHOS"
-embedded_group = h5_file.create_group(ds_name)
+parser = argparse.ArgumentParser(description='Your script description')
+
+parser.add_argument('--batch_size', type=int, default=8, help='Batch size for processing')
+parser.add_argument('--n_max', type=int, default=1000, help='Maximum number of files')
+parser.add_argument('--dataset_path', type=str, required=True, help='Path to the dataset')
+
+args = parser.parse_args()
+
+batch_size = args.batch_size
+dataset_path = args.dataset_path
+n_max = args.n_max
 
 # Create an embedding model
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -28,57 +34,50 @@ if torch.cuda.device_count() > 1:
     sam_model = DataParallel(sam_model)
 sam_model.to(device)
 
-# Load the SA1B dataset
-root = "FSSAM Datasets/" + ds_name
+if torch.cuda.device_count() > 1:
+    img_size = sam_model.module.image_encoder.img_size
+else:
+    img_size = sam_model.image_encoder.img_size
 
-class PILToNumpy(object):
-    def __call__(self, pil_img):
-        numpy_img = np.array(pil_img)
-        return numpy_img
-class PILToTensor(object):
-    def __call__(self, numpy_img):
-        tensor_img = np.transpose(numpy_img, (2, 0, 1))
-        return torch.from_numpy(tensor_img)
-
-sam_transform = ResizeLongestSide(sam_model.image_encoder.img_size)
-transform = transforms.Compose([
+sam_transform = ResizeLongestSide(img_size)
+transform = Compose([
     PILToNumpy(),
-    sam_transform.apply_image,
-    PILToTensor(),
-    #Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
+    sam_transform.apply_image, # rescale
+    NumpyToTensor(),
+    SAMPreprocess(img_size) # padding
 ])
-mask_transform = transforms.Compose([
-    sample_point
-])
-dataset = SA1B_Dataset(root=root, transform=transform, target_transform=mask_transform)
-batch_size = 32
+
+def is_valid_file(path):
+    if path.endswith(('.jpg', '.png')):
+        if os.path.exists(f'{path[:-3]}json'):
+            return True
+    return False
+
+dataset = Path_Dataset(root=dataset_path, transform=transform, is_valid_file=is_valid_file)
 dataloader = DataLoader(dataset, batch_size=batch_size)
 
-# Store images and masks in memory
-embedded_images = []
-points = []
-masks = []
-    
+count_n = 0
 with torch.no_grad():
-    for image, (point, mask) in tqdm.tqdm(dataset):
-        image = image.to(device)
+    for images, paths in tqdm.tqdm(dataloader):
+        batch_already_embedded = True
+        for path in paths:
+            filename = os.path.splitext(path)[0]
+            if not os.path.exists(filename + '.pt'):
+                batch_already_embedded = False 
 
-        # Perform embedding
-        if isinstance(sam_model, DataParallel):
-            image = sam_model.module.preprocess(image[None, :, :, :])
-            embedding = sam_model.module.image_encoder(image)[0]
+        if batch_already_embedded:
+            continue
+            
+        images = images.to(device)
+        if torch.cuda.device_count() > 1:
+            embeddings = sam_model.module.image_encoder(images)
         else:
-            image = sam_model.preprocess(image[None, :, :, :])
-            embedding = sam_model.image_encoder(image)[0]
+            embeddings = sam_model.image_encoder(images)
         
-        embedded_images.append(embedding.cpu())
-        points.append(point)
-        masks.append(mask)
-
-# Concatenate and store embeddings in HDF5 file
-embedded_images = torch.cat(embedded_images, dim=0)
-embedded_group.create_dataset('image_embeddings', data=embedded_images)
-embedded_group.create_dataset('points', data=points)
-embedded_group.create_dataset('masks', data=masks)
-
-h5_file.close()
+        for embedding, path in zip(embeddings, paths):
+            filename = os.path.splitext(path)[0]
+            torch.save(embedding, filename + '.pt')
+            count_n += 1
+            if count_n >= n_max:
+                exit()
+    

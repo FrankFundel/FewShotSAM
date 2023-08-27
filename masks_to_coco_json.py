@@ -17,7 +17,7 @@ def mask_to_polygon(mask):
     return segmentation
 
 def convert_masks_to_coco_json(root_folder, json_path):
-    image_folder = os.path.join(root_folder, "images")
+    image_folder = os.path.join(root_folder, "dataset/images")
     mask_folder = os.path.join(root_folder, "masks")
 
     # Retrieve a list of all mask image files in the folder
@@ -32,6 +32,7 @@ def convert_masks_to_coco_json(root_folder, json_path):
         "categories": []
     }
 
+    ids = 0
     for i, image_file in tqdm.tqdm(enumerate(image_files)):
         # Read the image file
         image_path = os.path.join(image_folder, image_file)
@@ -41,23 +42,31 @@ def convert_masks_to_coco_json(root_folder, json_path):
 
         # Load the image and mask
         image = Image.open(image_path)
-        mask = Image.open(mask_path).convert("L")
+        mask = Image.open(mask_path).convert("L") #single channel
 
-        # Convert the mask to a numpy array
-        mask_array = np.asfortranarray(mask)
+        unique_values = np.unique(mask)
+        if len(unique_values) <= 1:
+            continue
 
-        # Encode the binary mask
-        encoded_mask = mask_utils.encode(mask_array)
-        encoded_mask["counts"] = encoded_mask["counts"].decode("utf-8")
+        for value in unique_values:
+            if value != 0:
+                binary_mask = np.equal(mask, value).astype(np.uint8)
+                binary_mask = np.asfortranarray(binary_mask)
+                
+                # Encode the binary mask
+                encoded_mask = mask_utils.encode(binary_mask)
+                encoded_mask["counts"] = encoded_mask["counts"].decode("utf-8")
 
-        # Create an annotation entry for the image
-        annotation = {
-            "id": i + 1,
-            "image_id": i + 1,
-            "category_id": 0,  # No category/label
-            "segmentation": [encoded_mask],
-            "iscrowd": 0
-        }
+                # Create an annotation entry for the image
+                annotation = {
+                    "id": ids,
+                    "image_id": i + 1,
+                    "category_id": 0,  # No category/label
+                    "segmentation": [encoded_mask],
+                    "iscrowd": 0
+                }
+                coco_data["annotations"].append(annotation)
+                ids += 1
 
         # Add the image and annotation entries to the COCO data
         coco_data["images"].append({
@@ -66,8 +75,6 @@ def convert_masks_to_coco_json(root_folder, json_path):
             "height": image.height,
             "width": image.width,
         })
-
-        coco_data["annotations"].append(annotation)
 
     # Save the COCO JSON file
     with open(json_path, "w") as json_file:
@@ -78,7 +85,7 @@ if __name__ == "__main__":
     # Check if the root folder path argument is provided
     if len(sys.argv) != 2:
         print("Please provide the root folder path as an argument.")
-        print("Usage: python convert_masks_to_coco.py /path/to/root/folder")
+        print("Usage: python masks_to_coco.py /path/to/root/folder")
         sys.exit(1)
 
     # Retrieve the root folder path from the command-line argument
