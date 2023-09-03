@@ -4,5 +4,6 @@ wandb
 
 segment-anything
 
+*.pt
 *.pth
 *.h5

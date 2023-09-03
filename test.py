@@ -10,20 +10,11 @@ from utils import is_valid_file
 
 jaccard = BinaryJaccardIndex()
 
-def create_dataloaders(folder_paths, transform=None, target_transform=None, collate_fn=None, batch_size=8, only_test=False):
+def create_dataloaders(folder_paths, transform=None, target_transform=None, collate_fn=None, batch_size=8):
     dataloaders = {}
 
     for folder_path in folder_paths:
         dataset = Embedding_Dataset(root=folder_path, transform=transform, target_transform=target_transform, is_valid_file=is_valid_file)
-
-        if only_test:
-            dataset_size = len(dataset)
-            train_size = int(0.7 * dataset_size)
-            val_size = int(0.15 * dataset_size)
-            test_size = dataset_size - train_size - val_size
-            generator = torch.Generator().manual_seed(42)
-            _, _, dataset = random_split(dataset, [train_size, val_size, test_size], generator)
-
         dataloader = DataLoader(dataset, batch_size=batch_size, collate_fn=collate_fn)
         dataset_name = folder_path.split('/')[-2]  # Extract dataset name from the folder path
         dataloaders[dataset_name] = dataloader
@@ -48,6 +39,7 @@ def get_oracle_iou(target, prediction):
     return jaccard(target, prediction.cpu()), prediction
 
 def evaluate_model(model, dataloader, device):
+    np.random.seed(42)
     model.eval()
     total_iou = 0.0
     total_oracle_iou = 0.0

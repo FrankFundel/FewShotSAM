@@ -4,7 +4,7 @@ import json
 from pycocotools import mask as mask_utils
 import numpy as np
 
-class SA1B_Dataset(torchvision.datasets.ImageFolder):
+class Custom_Dataset(torchvision.datasets.ImageFolder):
     """A data loader for the SA-1B Dataset from "Segment Anything" (SAM)"""
 
     def __getitem__(self, index):
@@ -23,11 +23,12 @@ class SA1B_Dataset(torchvision.datasets.ImageFolder):
         for m in masks:
             # decode masks from COCO RLE format
             mask = mask_utils.decode(m['segmentation'])
-            if len(mask.shape) == 3:
-                target.append(torch.as_tensor(mask).permute(2, 0, 1))
-            else:
-                target.append(torch.as_tensor(mask))
-        target = torch.stack(target)
+            target.append(torch.as_tensor(mask).permute(2, 0, 1))
+            
+        if len(target) > 0:
+            target = torch.stack(target).squeeze(1)
+        else:
+            target = torch.zeros(1, 1, sample.size[1], sample.size[0])
         
         if self.transform is not None:
             sample = self.transform(sample)
@@ -64,7 +65,7 @@ class Embedding_Dataset(torchvision.datasets.ImageFolder):
         path, _ = self.imgs[index] # discard automatic subfolder labels
         sample = self.loader(path)
         masks = json.load(open(f'{path[:-3]}json'))['annotations'] # load json masks
-        embedding = torch.load(f'{path[:-3]}pt') # load embedding
+        embedding = torch.load(f'{path[:-3]}pt', map_location='cpu') # load embedding
         target = []
 
         for m in masks:
@@ -77,7 +78,7 @@ class Embedding_Dataset(torchvision.datasets.ImageFolder):
                 target.append(torch.as_tensor(mask).permute(2, 0, 1))
         
         if len(target) > 0:
-            target = torch.concat(target).unsqueeze(1)
+            target = torch.cat(target).unsqueeze(1)
         else:
             target = torch.zeros(1, 1, sample.size[1], sample.size[0])
         
@@ -90,3 +91,33 @@ class Embedding_Dataset(torchvision.datasets.ImageFolder):
 
     def __len__(self):
         return len(self.imgs)
+
+class Cutout_Dataset(torch.utils.data.Dataset):
+    def __init__(self, cutouts, transform=None):
+        self.cutouts = cutouts
+        self.transform = transform
+
+    def __getitem__(self, index):
+        sample = self.cutouts[index]
+        if self.transform:
+            sample = transform(sample)
+        return sample
+
+    def __len__(self):
+        return len(self.cutouts)
+
+class Cutout_Split_Dataset(torch.utils.data.Dataset):
+    def __init__(self, images, masks, transform=None):
+        self.images = images
+        self.masks = masks
+        self.transform = transform
+
+    def __getitem__(self, index):
+        sample = self.images[index]
+        target = self.masks[index]
+        if self.transform:
+            sample = transform(sample)
+        return sample, target
+
+    def __len__(self):
+        return len(self.images)
