@@ -2,8 +2,9 @@
 __pycache__
 wandb
 
-segment-anything
+checkpoints
+example_embeddings
 
 *.pt
 *.pth
-*.h5
+

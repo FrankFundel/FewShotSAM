@@ -21,14 +21,18 @@ class Custom_Dataset(torchvision.datasets.ImageFolder):
         target = []
 
         for m in masks:
-            # decode masks from COCO RLE format
-            mask = mask_utils.decode(m['segmentation'])
-            target.append(torch.as_tensor(mask).permute(2, 0, 1))
+            seg = m['segmentation']
+            if isinstance(seg[0], list):  # Polygon format
+                mask = mask_utils.decode(mask_utils.frPyObjects(seg, sample.size[1], sample.size[0]))
+            elif isinstance(seg[0], dict):  # RLE format
+                mask = mask_utils.decode(seg)
+            if np.sum(mask) > 0:
+                target.append(torch.as_tensor(mask).permute(2, 0, 1))
             
         if len(target) > 0:
-            target = torch.stack(target).squeeze(1)
+            target = torch.cat(target)
         else:
-            target = torch.zeros(1, 1, sample.size[1], sample.size[0])
+            target = torch.zeros(1, sample.size[1], sample.size[0])
         
         if self.transform is not None:
             sample = self.transform(sample)

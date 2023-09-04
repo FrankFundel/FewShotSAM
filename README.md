@@ -4,20 +4,15 @@ Fine-Tuning SAM in a robust and efficient way to disambiguate mask predictions u
 
 # ToDo
 
-- Load and observe SA-1B dataset
-- Build test set using multiple other datasets (embedded)
-- Evaluate SAM and naive approach using CLIP and DINOv2
+15. Build training dataset
+16. Build vector database (image, masks, cutout_id)
+17. Test sampling and retrieval process
 
-- Build Vector Database (image, masks, cutout_id) using best encoder of 3.
-- Test sampling and retrieval process
+18. Build model (Gated Self-Attention)
+19. Define training procedure
+20. Train and evaluate model
 
-- Build model (Gated Self-Attention)
-- Define training procedure
-- Train and evaluate model
-
-- Experiment with different architectures (e.g. ControlNet)
-- Experiment with retrieving before training
-- Try out "Visual Prompt Engineering"
+23. Try out Visual Prompt Engineering
 
 # Done
 
@@ -32,6 +27,12 @@ Fine-Tuning SAM in a robust and efficient way to disambiguate mask predictions u
 8. Embed, explore, baseline test
 9. Fine-tune SAM on Liebherr Dataset and test + oracle
 10. Compare annotation time
+
+11. Functions to create example datasets from cutouts
+12. Test dual-stage method on all datasets
+13. Try out Visual Prompt Engineering and Mask Prompt Tuning
+14. Try out DINOv2 and CLIP
+
 
 # Commands
 
