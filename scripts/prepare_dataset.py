@@ -1,10 +1,15 @@
+import sys
+sys.path.append('../')
+
 import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torch.nn.parallel import DataParallel
 from torchvision.datasets import ImageFolder
 from torchvision.transforms import Compose, ToTensor
-from utils import Path_Dataset, PILToNumpy, NumpyToTensor, SAMPreprocess
+
+from utils import PILToNumpy, NumpyToTensor, SAMPreprocess
+from datasets import Path_Dataset
 
 import tqdm
 import numpy as np
@@ -28,7 +33,7 @@ n_max = args.n_max
 
 # Create an embedding model
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-sam_model = sam_model_registry['vit_b'](checkpoint='sam_vit_b_01ec64.pth')
+sam_model = sam_model_registry['vit_b'](checkpoint='../sam_vit_b_01ec64.pth')
 if torch.cuda.device_count() > 1:
     print("Let's use", torch.cuda.device_count(), "GPUs!")
     sam_model = DataParallel(sam_model)
@@ -49,7 +54,7 @@ transform = Compose([
 
 def is_valid_file(path):
     if path.endswith(('.jpg', '.png')):
-        if os.path.exists(f'{path[:-3]}json'):
+        if os.path.exists(f'{path[:-3]}json') and not os.path.exists(f'{path[:-3]}pt'):
             return True
     return False
 
@@ -59,15 +64,6 @@ dataloader = DataLoader(dataset, batch_size=batch_size)
 count_n = 0
 with torch.no_grad():
     for images, paths in tqdm.tqdm(dataloader):
-        batch_already_embedded = True
-        for path in paths:
-            filename = os.path.splitext(path)[0]
-            if not os.path.exists(filename + '.pt'):
-                batch_already_embedded = False 
-
-        if batch_already_embedded:
-            continue
-            
         images = images.to(device)
         if torch.cuda.device_count() > 1:
             embeddings = sam_model.module.image_encoder(images)
@@ -78,6 +74,6 @@ with torch.no_grad():
             filename = os.path.splitext(path)[0]
             torch.save(embedding, filename + '.pt')
             count_n += 1
-            if count_n >= n_max:
+            if n_max != 0 and count_n >= n_max:
                 exit()
     

@@ -28,7 +28,7 @@ def get_iou(target, prediction, confidence):
 
 def get_oracle_iou(target, prediction):
     B, N, H, W = prediction.shape
-    target_flat = target.repeat(1, N, 1, 1).reshape(B * N, H, W)
+    target_flat = target.repeat(1, N, 1, 1).reshape(B * N, H, W) # TODO: repeat_interleave?
     prediction_flat = prediction.reshape(B * N, H, W).cpu()
     iou = []
     for t, p in zip(target_flat, prediction_flat):
@@ -66,6 +66,31 @@ def evaluate_model(model, dataloader, device):
     average_iou = total_iou / total_samples
     average_oracle_iou = total_oracle_iou / total_samples
     return average_iou, average_oracle_iou
+
+def evaluate_model_single(model, dataloader, device):
+    np.random.seed(42)
+    model.eval()
+    total_iou = 0.0
+    total_samples = 0
+
+    with torch.no_grad():
+        pbar = tqdm.tqdm(dataloader)
+        for images, masks, points, embeddings in pbar:
+            embeddings = embeddings.to(device)
+            points = points.to(device)
+
+            pred_masks = model(embeddings, points)
+            pred_masks = pred_masks > 0
+            
+            iou = jaccard(masks, pred_masks.cpu())
+
+            total_iou += iou * images.size(0)
+            total_samples += images.size(0)
+            
+            pbar.set_postfix({'IoU': (total_iou / total_samples).item()})
+
+    average_iou = total_iou / total_samples
+    return average_iou
 
 def test_model(model, dataloaders, device):
     iou_scores = []

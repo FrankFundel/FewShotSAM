@@ -5,6 +5,36 @@ import os
 import cv2
 from torchvision.transforms import Compose, Resize, CenterCrop, InterpolationMode
 
+def sample_point_uniform(mask):
+    vertical_indicies = torch.where(torch.any(mask, dim=1))[0]
+    horizontal_indicies = torch.where(torch.any(mask, dim=0))[0]
+    if horizontal_indicies.shape[0] and vertical_indicies.shape[0]:
+        x1, x2 = horizontal_indicies[[0, -1]]
+        y1, y2 = vertical_indicies[[0, -1]]
+        x = np.random.randint(x1, x2+1)
+        y = np.random.randint(y1, y2+1)
+        while mask[y, x] != 1:
+            x = np.random.randint(x1, x2+1)
+            y = np.random.randint(y1, y2+1)
+        return torch.Tensor([x, y])
+    else:
+        return torch.Tensor([0, 0])
+    
+def sample_point_nonuniform(mask, lambd):
+    # add 0-border
+    dist_mask = cv2.copyMakeBorder(np.asarray(mask, dtype=np.uint8), 1, 1, 1, 1, cv2.BORDER_CONSTANT, value=0)
+    dist_mask = cv2.distanceTransform(dist_mask, cv2.DIST_L2, 3)[1:-1, 1:-1] # remove 0-border
+    dist_mask = cv2.normalize(dist_mask, None, 0, 1., cv2.NORM_MINMAX)
+    flat_mask = dist_mask.flatten()
+    valid_indices = np.nonzero(flat_mask)[0]
+    if valid_indices.size <= 1:
+        return mask, torch.Tensor([0, 0])
+    p = np.exp(flat_mask[valid_indices] * lambd)
+    p /= p.sum()
+    random_index = np.random.choice(valid_indices, p=p)
+    point = [random_index % width, random_index // width]
+    return torch.Tensor(point)
+
 class SamplePoint(object):
     def __init__(self, non_uniform=True, lambd=10.0):
         self.non_uniform = non_uniform
@@ -13,29 +43,19 @@ class SamplePoint(object):
     def __call__(self, masks):
         k = np.random.randint(0, len(masks))
         mask = masks[k]
-        width = mask.shape[2]
+        channels, height, width = mask.shape
 
         if self.non_uniform:
-            dist_mask = cv2.copyMakeBorder(np.asarray(mask[0], dtype=np.uint8), 1, 1, 1, 1, cv2.BORDER_CONSTANT, value=0) # add 0-border
-            dist_mask = cv2.distanceTransform(dist_mask, cv2.DIST_L2, 3)[1:-1, 1:-1] # remove 0-border
-            dist_mask = cv2.normalize(dist_mask, None, 0, 1., cv2.NORM_MINMAX)
-            flat_mask = dist_mask.flatten()
+            return mask, sample_point_nonuniform(mask[0], self.lambd)
         else:
-            flat_mask = np.asarray(mask[0], dtype=np.float32).flatten()
+            return mask, sample_point_uniform(mask[0])
 
-        valid_indices = np.nonzero(flat_mask)[0]
-        if valid_indices.size <= 1:
-            return mask, torch.Tensor([0, 0])
-
-        if self.non_uniform:
-            p = np.exp(flat_mask[valid_indices] * self.lambd)
-        else:
-            p = flat_mask[valid_indices]
-        p /= p.sum()
-        random_index = np.random.choice(valid_indices, p=p)
-        point = [random_index % width, random_index // width]
-        return mask, torch.Tensor(point)
-
+def sample_points(masks):
+    points = []
+    for mask in masks:
+        points.append(sample_point_uniform(mask[0]))
+    return torch.stack(points)
+            
 class PILToNumpy(object):
     def __call__(self, pil_img):
         numpy_img = np.array(pil_img)
@@ -92,6 +112,12 @@ def embedding_collate(batch):
 def is_valid_file(path):
     if path.endswith(('.jpg', '.png')):
         if os.path.exists(f'{path[:-3]}json') and os.path.exists(f'{path[:-3]}pt'):
+            return True
+    return False
+
+def is_valid_file2(path):
+    if path.endswith(('.jpg', '.png')):
+        if os.path.exists(f'{path[:-4]}_mask.pt') and os.path.exists(f'{path[:-3]}pt'):
             return True
     return False
 
